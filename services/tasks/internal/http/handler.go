@@ -37,6 +37,7 @@ func New(taskService *service.TaskService, authClient *authclient.Client, logger
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.Health)
 	mux.HandleFunc("POST /v1/tasks", h.withInstanceHeader(h.withAuth(h.CreateTask)))
+	mux.HandleFunc("POST /v1/jobs/process-task", h.withInstanceHeader(h.withAuth(h.ProcessTaskJob)))
 	mux.HandleFunc("GET /v1/tasks", h.withInstanceHeader(h.withAuth(h.ListTasks)))
 	mux.HandleFunc("GET /v1/tasks/search", h.withInstanceHeader(h.withAuth(h.SearchTasks)))
 	mux.HandleFunc("GET /v1/tasks/{id}", h.withInstanceHeader(h.withAuth(h.GetTask)))
@@ -133,6 +134,25 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, task)
+}
+
+func (h *Handler) ProcessTaskJob(w http.ResponseWriter, r *http.Request) {
+	var req service.ProcessTaskInput
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logWarn(r, "handler", "invalid process task job json", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid json",
+		})
+		return
+	}
+
+	job, err := h.taskService.ProcessTask(r.Context(), req)
+	if err != nil {
+		h.handleServiceError(w, r, "publish process task job failed", err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, job)
 }
 
 func (h *Handler) ListTasks(w http.ResponseWriter, r *http.Request) {

@@ -128,7 +128,7 @@ const file_proto_auth_proto_rawDesc = "" +
 	"\x05valid\x18\x01 \x01(\bR\x05valid\x12\x18\n" +
 	"\asubject\x18\x02 \x01(\tR\asubject2B\n" +
 	"\vAuthService\x123\n" +
-	"\x06Verify\x12\x13.auth.VerifyRequest\x1a\x14.auth.VerifyResponseB\x17Z\x15tip2/proto;protob\x06proto3"
+	"\x06Verify\x12\x13.auth.VerifyRequest\x1a\x14.auth.VerifyResponseB\x12Z\x10tip2/proto;protob\x06proto3"
 
 var (
 	file_proto_auth_proto_rawDescOnce sync.Once

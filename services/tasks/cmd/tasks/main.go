@@ -101,7 +101,9 @@ func newEventPublisher(logger *zap.Logger) closeablePublisher {
 	}
 
 	queueName := getEnv("QUEUE_NAME", "task_events")
-	publisher, err := events.NewRabbitPublisher(rabbitURL, queueName)
+	dlxName := getEnv("DLX_NAME", "task_jobs_dlx")
+	dlqName := getEnv("DLQ_NAME", "task_jobs_dlq")
+	publisher, err := events.NewRabbitPublisher(rabbitURL, queueName, dlxName, dlqName)
 	if err != nil {
 		logger.Warn("rabbitmq publisher unavailable",
 			zap.String("component", "events"),
@@ -114,6 +116,8 @@ func newEventPublisher(logger *zap.Logger) closeablePublisher {
 	logger.Info("rabbitmq publisher enabled",
 		zap.String("component", "events"),
 		zap.String("queue", queueName),
+		zap.String("dlx", dlxName),
+		zap.String("dlq", dlqName),
 	)
 	return publisher
 }

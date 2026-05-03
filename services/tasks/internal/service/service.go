@@ -12,6 +12,7 @@ import (
 	"tip2/services/tasks/internal/cache"
 	"tip2/services/tasks/internal/repository"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -46,15 +47,32 @@ type TaskEvent struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type ProcessTaskInput struct {
+	TaskID    string `json:"task_id"`
+	MessageID string `json:"message_id,omitempty"`
+}
+
+type ProcessTaskJob struct {
+	Job       string `json:"job"`
+	TaskID    string `json:"task_id"`
+	Attempt   int    `json:"attempt"`
+	MessageID string `json:"message_id"`
+}
+
 type EventPublisher interface {
 	Publish(ctx context.Context, event TaskEvent) error
 }
 
+type JobPublisher interface {
+	PublishJob(ctx context.Context, job ProcessTaskJob) error
+}
+
 type TaskService struct {
-	repo      repository.TaskRepository
-	cache     cache.TaskCache
-	publisher EventPublisher
-	logger    *zap.Logger
+	repo         repository.TaskRepository
+	cache        cache.TaskCache
+	publisher    EventPublisher
+	jobPublisher JobPublisher
+	logger       *zap.Logger
 }
 
 func New(repo repository.TaskRepository, taskCache cache.TaskCache, logger *zap.Logger, publishers ...EventPublisher) *TaskService {
@@ -66,15 +84,20 @@ func New(repo repository.TaskRepository, taskCache cache.TaskCache, logger *zap.
 	}
 
 	var publisher EventPublisher
+	var jobPublisher JobPublisher
 	if len(publishers) > 0 {
 		publisher = publishers[0]
+		if jp, ok := publishers[0].(JobPublisher); ok {
+			jobPublisher = jp
+		}
 	}
 
 	return &TaskService{
-		repo:      repo,
-		cache:     taskCache,
-		publisher: publisher,
-		logger:    logger,
+		repo:         repo,
+		cache:        taskCache,
+		publisher:    publisher,
+		jobPublisher: jobPublisher,
+		logger:       logger,
 	}
 }
 
@@ -249,6 +272,33 @@ func (s *TaskService) Delete(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+func (s *TaskService) ProcessTask(ctx context.Context, input ProcessTaskInput) (ProcessTaskJob, error) {
+	taskID := strings.TrimSpace(input.TaskID)
+	if taskID == "" {
+		return ProcessTaskJob{}, errors.New("task_id is required")
+	}
+	if s.jobPublisher == nil {
+		return ProcessTaskJob{}, errors.New("job publisher is disabled")
+	}
+
+	messageID := strings.TrimSpace(input.MessageID)
+	if messageID == "" {
+		messageID = uuid.NewString()
+	}
+
+	job := ProcessTaskJob{
+		Job:       "process_task",
+		TaskID:    taskID,
+		Attempt:   1,
+		MessageID: messageID,
+	}
+	if err := s.jobPublisher.PublishJob(ctx, job); err != nil {
+		return ProcessTaskJob{}, err
+	}
+
+	return job, nil
 }
 
 func (s *TaskService) publishTaskCreated(ctx context.Context, task Task) {

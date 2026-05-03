@@ -114,6 +114,8 @@ services:
       REDIS_INIT_TIMEOUT_MS: "${REDIS_INIT_TIMEOUT_MS}"
       RABBIT_URL: "${RABBIT_URL}"
       QUEUE_NAME: "${QUEUE_NAME}"
+      DLX_NAME: "${DLX_NAME}"
+      DLQ_NAME: "${DLQ_NAME}"
       INSTANCE_ID: tasks-1
     expose:
       - "${TASKS_PORT}"
@@ -149,6 +151,8 @@ services:
       REDIS_INIT_TIMEOUT_MS: "${REDIS_INIT_TIMEOUT_MS}"
       RABBIT_URL: "${RABBIT_URL}"
       QUEUE_NAME: "${QUEUE_NAME}"
+      DLX_NAME: "${DLX_NAME}"
+      DLQ_NAME: "${DLQ_NAME}"
       INSTANCE_ID: tasks-2
     expose:
       - "${TASKS_PORT}"
@@ -168,7 +172,12 @@ services:
     environment:
       RABBIT_URL: "${RABBIT_URL}"
       QUEUE_NAME: "${QUEUE_NAME}"
+      DLX_NAME: "${DLX_NAME}"
+      DLQ_NAME: "${DLQ_NAME}"
       WORKER_PREFETCH: "${WORKER_PREFETCH}"
+      MAX_ATTEMPTS: "${MAX_ATTEMPTS}"
+      PROCESSING_MIN_MS: "${PROCESSING_MIN_MS}"
+      PROCESSING_MAX_MS: "${PROCESSING_MAX_MS}"
     restart: unless-stopped
 
   prometheus:

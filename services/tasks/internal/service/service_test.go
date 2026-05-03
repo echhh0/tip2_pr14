@@ -75,11 +75,17 @@ func (s *taskCacheStub) Close() error { return nil }
 
 type eventPublisherStub struct {
 	published []TaskEvent
+	jobs      []ProcessTaskJob
 	err       error
 }
 
 func (s *eventPublisherStub) Publish(ctx context.Context, event TaskEvent) error {
 	s.published = append(s.published, event)
+	return s.err
+}
+
+func (s *eventPublisherStub) PublishJob(ctx context.Context, job ProcessTaskJob) error {
+	s.jobs = append(s.jobs, job)
 	return s.err
 }
 
@@ -214,6 +220,47 @@ func TestCreateRequiresTitle(t *testing.T) {
 		t.Fatalf("expected validation error")
 	}
 	if err.Error() != "title is required" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProcessTaskPublishesJob(t *testing.T) {
+	svc := New(&taskRepoStub{}, &taskCacheStub{}, zap.NewNop(), &eventPublisherStub{})
+	publisher := svc.jobPublisher.(*eventPublisherStub)
+
+	job, err := svc.ProcessTask(context.Background(), ProcessTaskInput{
+		TaskID:    " t_001 ",
+		MessageID: "message-1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if job.Job != "process_task" {
+		t.Fatalf("unexpected job name: %q", job.Job)
+	}
+	if job.TaskID != "t_001" {
+		t.Fatalf("unexpected task_id: %q", job.TaskID)
+	}
+	if job.Attempt != 1 {
+		t.Fatalf("unexpected attempt: %d", job.Attempt)
+	}
+	if job.MessageID != "message-1" {
+		t.Fatalf("unexpected message_id: %q", job.MessageID)
+	}
+	if len(publisher.jobs) != 1 || publisher.jobs[0] != job {
+		t.Fatalf("unexpected published jobs: %#v", publisher.jobs)
+	}
+}
+
+func TestProcessTaskRequiresTaskID(t *testing.T) {
+	svc := New(&taskRepoStub{}, &taskCacheStub{}, zap.NewNop(), &eventPublisherStub{})
+
+	_, err := svc.ProcessTask(context.Background(), ProcessTaskInput{TaskID: "   "})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	if err.Error() != "task_id is required" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
