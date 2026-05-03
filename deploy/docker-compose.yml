@@ -1,0 +1,252 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tip2_db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis-cluster:
+    image: grokzen/redis-cluster:7.0.10
+    container_name: tip2_redis_cluster
+    environment:
+      IP: 0.0.0.0
+      INITIAL_PORT: 7000
+      MASTERS: 3
+      SLAVES_PER_MASTER: 1
+    expose:
+      - "7000"
+      - "7001"
+      - "7002"
+      - "7003"
+      - "7004"
+      - "7005"
+    ports:
+      - "${REDIS_PORT_1}:7000"
+      - "${REDIS_PORT_2}:7001"
+      - "${REDIS_PORT_3}:7002"
+      - "${REDIS_PORT_4}:7003"
+      - "${REDIS_PORT_5}:7004"
+      - "${REDIS_PORT_6}:7005"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 7000 cluster info | grep cluster_state:ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: tip2_rabbitmq
+    env_file:
+      - .env
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_DEFAULT_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_DEFAULT_PASS}"
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  auth:
+    image: "${AUTH_IMAGE_REPO}:${IMAGE_TAG}"
+    build:
+      context: ..
+      dockerfile: services/auth/Dockerfile
+    container_name: tip2_auth
+    env_file:
+      - .env
+    environment:
+      AUTH_PORT: "${AUTH_PORT}"
+      AUTH_GRPC_PORT: "${AUTH_GRPC_PORT}"
+    expose:
+      - "${AUTH_PORT}"
+      - "${AUTH_GRPC_PORT}"
+    ports:
+      - "${AUTH_PORT}:${AUTH_PORT}"
+      - "${AUTH_GRPC_PORT}:${AUTH_GRPC_PORT}"
+    restart: unless-stopped
+
+  tasks_1:
+    image: "${TASKS_IMAGE_REPO}:${IMAGE_TAG}"
+    build:
+      context: ..
+      dockerfile: services/tasks/Dockerfile
+    container_name: tip2_tasks_1
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      redis-cluster:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      TASKS_PORT: "${TASKS_PORT}"
+      AUTH_GRPC_ADDR: "${AUTH_GRPC_ADDR}"
+      TASKS_DB_DSN: "${TASKS_DB_DSN}"
+      REDIS_ADDRS: "${REDIS_ADDRS}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_DB: "${REDIS_DB}"
+      CACHE_TTL_SECONDS: "${CACHE_TTL_SECONDS}"
+      CACHE_TTL_JITTER_SECONDS: "${CACHE_TTL_JITTER_SECONDS}"
+      REDIS_OP_TIMEOUT_MS: "${REDIS_OP_TIMEOUT_MS}"
+      REDIS_INIT_TIMEOUT_MS: "${REDIS_INIT_TIMEOUT_MS}"
+      RABBIT_URL: "${RABBIT_URL}"
+      QUEUE_NAME: "${QUEUE_NAME}"
+      INSTANCE_ID: tasks-1
+    expose:
+      - "${TASKS_PORT}"
+    restart: unless-stopped
+
+  tasks_2:
+    image: "${TASKS_IMAGE_REPO}:${IMAGE_TAG}"
+    build:
+      context: ..
+      dockerfile: services/tasks/Dockerfile
+    container_name: tip2_tasks_2
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      redis-cluster:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      TASKS_PORT: "${TASKS_PORT}"
+      AUTH_GRPC_ADDR: "${AUTH_GRPC_ADDR}"
+      TASKS_DB_DSN: "${TASKS_DB_DSN}"
+      REDIS_ADDRS: "${REDIS_ADDRS}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_DB: "${REDIS_DB}"
+      CACHE_TTL_SECONDS: "${CACHE_TTL_SECONDS}"
+      CACHE_TTL_JITTER_SECONDS: "${CACHE_TTL_JITTER_SECONDS}"
+      REDIS_OP_TIMEOUT_MS: "${REDIS_OP_TIMEOUT_MS}"
+      REDIS_INIT_TIMEOUT_MS: "${REDIS_INIT_TIMEOUT_MS}"
+      RABBIT_URL: "${RABBIT_URL}"
+      QUEUE_NAME: "${QUEUE_NAME}"
+      INSTANCE_ID: tasks-2
+    expose:
+      - "${TASKS_PORT}"
+    restart: unless-stopped
+
+  worker:
+    image: "${WORKER_IMAGE_REPO}:${IMAGE_TAG}"
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
+    container_name: tip2_worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      RABBIT_URL: "${RABBIT_URL}"
+      QUEUE_NAME: "${QUEUE_NAME}"
+      WORKER_PREFETCH: "${WORKER_PREFETCH}"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: tip2_prometheus
+    depends_on:
+      - tasks_1
+      - tasks_2
+    env_file:
+      - .env
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    container_name: tip2_grafana
+    depends_on:
+      - prometheus
+    env_file:
+      - .env
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL}"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "${GRAFANA_SERVE_FROM_SUB_PATH}"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    expose:
+      - "3000"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: tip2_nginx
+    depends_on:
+      - auth
+      - tasks_1
+      - tasks_2
+      - grafana
+      - graphql
+    env_file:
+      - .env
+    ports:
+      - "${NGINX_PORT}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+  graphql:
+    image: "${GRAPHQL_IMAGE_REPO}:${IMAGE_TAG}"
+    build:
+      context: ..
+      dockerfile: services/graphql/Dockerfile
+    container_name: tip2_graphql
+    depends_on:
+      - tasks_1
+      - auth
+    env_file:
+      - .env
+    environment:
+      GRAPHQL_PORT: "${GRAPHQL_PORT}"
+      TASKS_REST_BASE_URL: "${TASKS_REST_BASE_URL}"
+    ports:
+      - "${GRAPHQL_PORT}:${GRAPHQL_PORT}"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

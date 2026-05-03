@@ -1,0 +1,17 @@
+.git
+../tip2/.gitignore
+.idea
+.vscode
+.DS_Store
+**/.DS_Store
+**/.git
+**/.idea
+**/bin
+**/tmp
+**/*.log
+__MACOSX
+
+README.md
+docs
+
+deploy/tls/docker-compose.yml

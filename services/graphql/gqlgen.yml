@@ -1,0 +1,23 @@
+schema:
+  - services/graphql/graph/schema.graphqls
+
+exec:
+  filename: services/graphql/graph/generated/generated.go
+  package: generated
+
+model:
+  filename: services/graphql/graph/model/models_gen.go
+  package: model
+
+resolver:
+  layout: follow-schema
+  dir: services/graphql/graph
+  package: graph
+  filename_template: "{name}.resolvers.go"
+
+autobind: []
+
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID

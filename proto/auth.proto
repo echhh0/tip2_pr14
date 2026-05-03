@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "tip2/proto;proto";
+
+service AuthService {
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+}
+
+message VerifyRequest {
+  string token = 1;
+}
+
+message VerifyResponse {
+  bool valid = 1;
+  string subject = 2;
+}
